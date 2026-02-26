@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#1F2937">
+  <title>관리자 - 시간외근무 관리 시스템</title>
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['-apple-system','BlinkMacSystemFont','Segoe UI','Noto Sans KR','sans-serif'] }
+        }
+      }
+    }
+  </script>
+
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <style>
+    body { max-width: 1280px; margin: 0 auto; }
+    @media (min-width: 1281px) { body { border-left: 1px solid #e5e7eb; border-right: 1px solid #e5e7eb; } }
+  </style>
+</head>
+<body class="bg-slate-50 text-gray-900 font-sans min-h-screen">
+
+  <div id="admin-app"></div>
+
+  <script src="../js/api.js"></script>
+  <script src="admin.js"></script>
+</body>
+</html>
