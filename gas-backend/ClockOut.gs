@@ -102,7 +102,12 @@ function handleClockOut(p) {
 
 function _baseClock(d) {
   var k = ['sun','mon','tue','wed','thu','fri','sat'][d.getDay()];
-  return getSettingValue('base_clock_out_' + k) || '18:00';
+  var v = getSettingValue('base_clock_out_' + k);
+  if (!v) return '18:00';
+  // Date 객체 방어 (getSettingValue에서 이미 처리하지만 이중 안전)
+  if (v instanceof Date) return Utilities.formatDate(v, 'Asia/Seoul', 'HH:mm');
+  var m = String(v).match(/(\d{1,2}):(\d{2})/);
+  return m ? m[1].padStart(2,'0') + ':' + m[2] : '18:00';
 }
 
 function _calcOT(actual, base) {

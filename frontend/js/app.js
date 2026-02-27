@@ -8,6 +8,26 @@
    ================================================ */
 function $(id){ return document.getElementById(id); }
 
+/* 시간 문자열 파싱 (Google Sheets Date 객체 → "HH:mm" 변환) */
+function parseTime(val) {
+  if (!val) return '--:--';
+  var s = String(val);
+  // ISO date string (예: "1899-12-30T09:00:00.000Z") → KST 시간 추출
+  if (s.indexOf('T') > -1 && s.length > 10) {
+    var d = new Date(s);
+    if (!isNaN(d.getTime())) {
+      // UTC → KST (+9시간)
+      var h = (d.getUTCHours() + 9) % 24;
+      var m = d.getUTCMinutes();
+      return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
+    }
+  }
+  // "HH:mm" 또는 "HH:mm:ss" 형태
+  var match = s.match(/(\d{1,2}):(\d{2})/);
+  if (match) return match[1].padStart(2,'0') + ':' + match[2];
+  return s;
+}
+
 var U = {
   /* 시간외근무 분→텍스트 */
   ot: function(m){
@@ -298,9 +318,9 @@ function tick(){
 async function loadStatus(){
   var r = await API.status();
   if(!r||!r.success) return;
-  baseClock = r.base_clock_out;
+  baseClock = parseTime(r.base_clock_out);
   var be = $('v-base');
-  if(be) be.textContent = r.base_clock_out;
+  if(be) be.textContent = baseClock;
   if(r.already_recorded) markDone(r.today_record);
 }
 
@@ -383,7 +403,7 @@ async function _doAdmLogin(modal){
   if(r.success){
     localStorage.setItem('adm_st', r.session_token);
     modal.remove();
-    location.href = '/admin/index.html';
+    location.href = '/admin/';
   } else {
     U.toast(r.error || '인증 실패');
   }

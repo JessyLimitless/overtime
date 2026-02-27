@@ -20,7 +20,14 @@ function getSettingValue(key) {
   var sh = getSheet('설정');
   var rows = sh.getDataRange().getValues();
   for (var i = 1; i < rows.length; i++) {
-    if (String(rows[i][0]) === String(key)) return rows[i][1];
+    if (String(rows[i][0]) === String(key)) {
+      var v = rows[i][1];
+      // Google Sheets가 "18:00" 같은 시간값을 Date 객체로 자동 변환하는 문제 처리
+      if (v instanceof Date) {
+        return Utilities.formatDate(v, 'Asia/Seoul', 'HH:mm');
+      }
+      return String(v);
+    }
   }
   return null;
 }

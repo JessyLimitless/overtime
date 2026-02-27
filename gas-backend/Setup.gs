@@ -44,13 +44,16 @@ function initialSetup() {
       ['admin_password_hash', hashPassword('admin1234'), '관리자 비밀번호',n],
       ['session_expire_hours','24','세션 만료(시간)',n]
     ]);
+    // setting_value 컬럼을 텍스트 형식으로 강제 (Sheets가 "18:00"을 시간으로 변환하는 것 방지)
+    stSh.getRange(2, 2, 13, 1).setNumberFormat('@');
   }
 
-  /* ── 3. 테스트 직원 3명 (없을 때만) ── */
+  /* ── 3. 테스트 직원 (없을 때만) ── */
   var empSh = ss.getSheetByName('직원마스터');
   if (empSh.getDataRange().getValues().length <= 1) {
     var n2 = new Date();
-    empSh.getRange(2,1,3,10).setValues([
+    empSh.getRange(2,1,4,10).setValues([
+      ['1111','테스트사용자','경영지원팀','사원',hashPassword('1111'),generateToken('tk'),'',true,n2,''],
       ['EMP001','홍길동','경영지원팀','대리',hashPassword('1234'),generateToken('tk'),'',true,n2,''],
       ['EMP002','김영희','기업평가1팀','과장',hashPassword('1234'),generateToken('tk'),'',true,n2,''],
       ['EMP003','이철수','기업평가2팀','사원',hashPassword('1234'),generateToken('tk'),'',true,n2,'']
@@ -58,6 +61,33 @@ function initialSetup() {
   }
 
   Logger.log('✅ 초기 설정 완료 — 시트 6개 생성, 기본 데이터 삽입');
+}
+
+/* ── 테스트 직원 1111 수동 추가 (이미 셋업 완료된 경우 이 함수 실행) ── */
+
+function addTestEmployee1111() {
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var empSh = ss.getSheetByName('직원마스터');
+  var rows = empSh.getDataRange().getValues();
+
+  // 이미 존재하는지 확인
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]) === '1111') {
+      // 비밀번호만 업데이트
+      empSh.getRange(i + 1, 5).setValue(hashPassword('1111'));
+      empSh.getRange(i + 1, 8).setValue(true);
+      Logger.log('직원 1111 비밀번호 업데이트 완료');
+      return;
+    }
+  }
+
+  // 새로 추가
+  var n = new Date();
+  empSh.appendRow([
+    '1111', '테스트사용자', '경영지원팀', '사원',
+    hashPassword('1111'), generateToken('tk'), '', true, n, ''
+  ]);
+  Logger.log('직원 1111 추가 완료 (사번: 1111, 비밀번호: 1111)');
 }
 
 /* ── 만료 세션 정리 (트리거) ── */

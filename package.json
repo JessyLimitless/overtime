@@ -2,7 +2,7 @@
   "name": "kcr-overtime",
   "version": "1.0.0",
   "scripts": {
-    "start": "npx serve frontend -l 3000"
+    "start": "npx serve frontend -l ${PORT:-3000}"
   },
   "dependencies": {
     "serve": "^14.0.0"

@@ -14,7 +14,7 @@
   };
   </script>
 
-  <!-- Chart.js (defer로 로딩 블로킹 방지) -->
+  <!-- Chart.js (defer: 페이지 렌더링 블로킹 방지) -->
   <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 
   <style>
@@ -24,9 +24,40 @@
 </head>
 <body class="bg-slate-50 text-gray-900 font-sans min-h-screen">
 
-  <div id="root"><p style="text-align:center;padding:40px;color:#999">로딩 중...</p></div>
+  <div id="root">
+    <p style="text-align:center;padding:60px 20px;color:#999;font-family:sans-serif">로딩 중...</p>
+  </div>
 
-  <!-- admin.js가 API 모듈을 자체 포함하므로 api.js 불필요 -->
-  <script src="admin.js"></script>
+  <!-- JS 에러 시 화면에 표시 -->
+  <script>
+  window.onerror = function(msg, url, line) {
+    var r = document.getElementById('root');
+    if (r) r.innerHTML = '<div style="padding:40px;text-align:center;font-family:sans-serif">'
+      + '<p style="color:red;font-weight:bold;margin-bottom:8px">JavaScript 오류</p>'
+      + '<p style="color:#666;font-size:14px">' + msg + '</p>'
+      + '<p style="color:#999;font-size:12px;margin-top:4px">' + (url||'') + ':' + (line||'') + '</p>'
+      + '<a href="/admin/" style="display:inline-block;margin-top:16px;color:#2563eb;font-size:14px">새로고침</a>'
+      + '</div>';
+    return true;
+  };
+  </script>
+
+  <!-- admin.js (API 모듈 자체 포함, 절대경로) -->
+  <script src="/admin/admin.js"></script>
+
+  <!-- admin.js 로딩 실패 감지 -->
+  <script>
+  setTimeout(function(){
+    var r = document.getElementById('root');
+    if (r && r.textContent.trim() === '로딩 중...') {
+      r.innerHTML = '<div style="padding:40px;text-align:center;font-family:sans-serif">'
+        + '<p style="color:red;font-weight:bold;margin-bottom:8px">페이지 로딩 실패</p>'
+        + '<p style="color:#666;font-size:14px">admin.js를 불러올 수 없습니다.</p>'
+        + '<p style="color:#999;font-size:12px;margin-top:8px">현재 URL: ' + location.href + '</p>'
+        + '<a href="/admin/" style="display:inline-block;margin-top:16px;padding:8px 20px;background:#2563eb;color:#fff;border-radius:8px;text-decoration:none;font-size:14px">다시 시도</a>'
+        + '</div>';
+    }
+  }, 5000);
+  </script>
 </body>
 </html>
