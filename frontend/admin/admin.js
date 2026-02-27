@@ -1,8 +1,51 @@
 /**
- * admin.js - 관리자 대시보드 SPA
- * Chart.js 차트 · QR 일괄생성(qrcode.js CDN) · 직원관리 · CSV · 설정
+ * admin.js - 관리자 대시보드 SPA (self-contained)
+ * API 모듈 내장 · Chart.js 차트 · QR 일괄생성 · 직원관리 · CSV · 설정
  */
 
+/* ================================================
+   API 모듈 (인라인 - 경로 의존성 제거)
+   ================================================ */
+var API_BASE = 'https://script.google.com/macros/s/AKfycbzE_jenZo_g-B-7nr8anny6xRNUpts8L9LHIv2OQIUkW8PHFmY41_Wq1iUDmabHp-G5oA/exec';
+
+var API = {
+  call: function(action, extra) {
+    var body = Object.assign(
+      { action: action, session_token: localStorage.getItem('adm_st') || '' },
+      extra || {}
+    );
+    return fetch(API_BASE, {
+      method: 'POST',
+      redirect: 'follow',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(body)
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (!d.success && d.error && d.error.indexOf('세션') > -1) {
+        localStorage.removeItem('adm_st');
+        location.reload();
+      }
+      return d;
+    })
+    .catch(function(e){
+      console.error('API error:', e);
+      return { success:false, error:'서버 통신 오류가 발생했습니다.' };
+    });
+  },
+  adminLogin:   function(pw)   { return this.call('admin_login', {password:pw}); },
+  dashboard:    function(ym)   { return this.call('get_dashboard_data', {year_month:ym}); },
+  allStats:     function(ym)   { return this.call('get_all_stats', {year_month:ym}); },
+  genAllQR:     function(base) { return this.call('generate_all_qr', {base_url:base}); },
+  addEmp:       function(d)    { return this.call('add_employee', d); },
+  employees:    function()     { return this.call('get_employees'); },
+  saveSettings: function(arr)  { return this.call('update_settings', {settings:arr}); },
+  getSettings:  function()     { return this.call('get_settings'); }
+};
+
+/* ================================================
+   유틸
+   ================================================ */
 function $(id){ return document.getElementById(id); }
 var charts = {};
 var curYM = (function(){ var n=new Date(); return n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0'); })();
@@ -11,9 +54,14 @@ var curYM = (function(){ var n=new Date(); return n.getFullYear()+'-'+String(n.g
    초기화
    ================================================ */
 document.addEventListener('DOMContentLoaded', function(){
-  var tk = localStorage.getItem('adm_st');
-  if(tk){ localStorage.setItem('st', tk); showApp(); }
-  else { showLogin(); }
+  try {
+    var tk = localStorage.getItem('adm_st');
+    if(tk){ showApp(); }
+    else { showLogin(); }
+  } catch(e) {
+    console.error('Init error:', e);
+    $('root').innerHTML = '<p style="text-align:center;padding:40px;color:red">초기화 오류: ' + e.message + '</p>';
+  }
 });
 
 /* ================================================
@@ -29,21 +77,30 @@ function showLogin(){
           '<input id="pw" type="password" placeholder="관리자 비밀번호" class="w-full px-4 py-3.5 border-2 border-gray-100 rounded-xl text-base outline-none focus:border-blue-500">' +
           '<button id="bl" class="w-full py-3.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition">로그인</button>' +
         '</div>' +
+        '<p id="login-err" class="text-red-500 text-sm mt-3 hidden"></p>' +
       '</div>' +
     '</div>';
   $('bl').onclick = doAdmLogin;
   $('pw').onkeydown = function(e){ if(e.key==='Enter') doAdmLogin(); };
+  $('pw').focus();
 }
 
 async function doAdmLogin(){
   var p = $('pw').value;
   if(!p){ alert('비밀번호를 입력하세요.'); return; }
+  $('bl').disabled = true;
+  $('bl').textContent = '로그인 중...';
   var r = await API.adminLogin(p);
   if(r.success){
-    localStorage.setItem('st', r.session_token);
     localStorage.setItem('adm_st', r.session_token);
     showApp();
-  } else { alert(r.error); }
+  } else {
+    $('bl').disabled = false;
+    $('bl').textContent = '로그인';
+    var errEl = $('login-err');
+    errEl.textContent = r.error || '인증 실패';
+    errEl.classList.remove('hidden');
+  }
 }
 
 /* ================================================
@@ -93,7 +150,6 @@ function showApp(){
 
     /* ── 직원 관리 ── */
     '<div id="p-emp" class="hidden p-4 lg:p-6 space-y-5">' +
-      /* 직원 추가 */
       '<div class="bg-white rounded-xl p-5 shadow-sm">' +
         '<h3 class="font-extrabold mb-4">직원 추가</h3>' +
         '<div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">' +
@@ -101,13 +157,11 @@ function showApp(){
         '</div>' +
         '<button id="badd" class="px-5 py-2.5 bg-blue-600 text-white text-sm font-bold rounded-lg hover:bg-blue-700">직원 추가 (초기 비밀번호: 0000)</button>' +
       '</div>' +
-      /* QR */
       '<div class="bg-white rounded-xl p-5 shadow-sm">' +
         '<h3 class="font-extrabold mb-2">QR 코드 일괄 생성</h3>' +
         '<p class="text-xs text-gray-500 mb-4">전체 직원의 QR 코드를 생성하고 인쇄용 페이지를 엽니다.</p>' +
         '<button id="bqr" class="px-5 py-2.5 bg-emerald-600 text-white text-sm font-bold rounded-lg hover:bg-emerald-700">QR 일괄 생성 &amp; 인쇄</button>' +
       '</div>' +
-      /* 직원 목록 */
       '<div class="bg-white rounded-xl p-5 shadow-sm">' +
         '<h3 class="font-extrabold mb-3">직원 목록</h3>' +
         '<div id="elist" class="text-sm text-gray-400">불러오는 중...</div>' +
@@ -133,10 +187,8 @@ function inp(id,label,ph){
 
 /* ── 이벤트 바인딩 ── */
 function bindApp(){
-  /* 로그아웃 */
-  $('bo').onclick = function(){ localStorage.removeItem('adm_st'); localStorage.removeItem('st'); location.reload(); };
+  $('bo').onclick = function(){ localStorage.removeItem('adm_st'); location.reload(); };
 
-  /* 월 셀렉트 */
   var sel = $('ym'), n = new Date();
   for(var i=0;i<12;i++){
     var d = new Date(n.getFullYear(), n.getMonth()-i, 1);
@@ -148,7 +200,6 @@ function bindApp(){
   }
   sel.onchange = function(){ curYM=sel.value; loadDash(); };
 
-  /* 탭 전환 */
   document.querySelectorAll('.tb').forEach(function(b){
     b.onclick = function(){
       document.querySelectorAll('.tb').forEach(function(x){ x.classList.remove('border-blue-600','text-blue-600'); x.classList.add('border-transparent','text-gray-500'); });
@@ -170,33 +221,38 @@ function bindApp(){
    ================================================ */
 async function loadDash(){
   var r = await API.dashboard(curYM);
-  if(!r.success) return;
+  if(!r.success){ $('cards').innerHTML = '<div class="col-span-full text-center py-8 text-gray-400 text-sm">데이터를 불러올 수 없습니다.</div>'; return; }
 
-  /* 카드 */
-  var th = r.department_summary.reduce(function(s,d){return s+d.total_hours;},0);
-  var avg = r.total_employees > 0 ? (th/r.total_employees).toFixed(1) : '0';
+  var ds = r.department_summary || [];
+  var te = r.total_employees || 0;
+  var top = r.top_overtime_employees || [];
+  var wt = r.weekly_trend || [];
+
+  var th = ds.reduce(function(s,d){return s+d.total_hours;},0);
+  var avg = te > 0 ? (th/te).toFixed(1) : '0';
   $('cards').innerHTML =
-    card(r.total_employees,'총 인원') + card(th.toFixed(1),'총 시간외(h)') +
-    card(avg,'인당 평균(h)') + card(r.department_summary.length,'부서 수');
+    card(te,'총 인원') + card(th.toFixed(1),'총 시간외(h)') +
+    card(avg,'인당 평균(h)') + card(ds.length,'부서 수');
 
-  /* 차트 */
+  if(typeof Chart === 'undefined') return; // Chart.js 로딩 전이면 스킵
+
   mkChart('dept', 'cDept', 'bar', {
-    labels: r.department_summary.map(function(d){return d.department;}),
+    labels: ds.map(function(d){return d.department;}),
     datasets: [
-      { label:'총 시간외(h)', data:r.department_summary.map(function(d){return d.total_hours;}), backgroundColor:'rgba(37,99,235,0.7)' },
-      { label:'인당 평균(h)', data:r.department_summary.map(function(d){return d.avg_hours;}), backgroundColor:'rgba(16,185,129,0.7)' }
+      { label:'총 시간외(h)', data:ds.map(function(d){return d.total_hours;}), backgroundColor:'rgba(37,99,235,0.7)' },
+      { label:'인당 평균(h)', data:ds.map(function(d){return d.avg_hours;}), backgroundColor:'rgba(16,185,129,0.7)' }
     ]
   }, { plugins:{ title:{ display:true, text:'부서별 시간외근무' } } });
 
   mkChart('top', 'cTop', 'bar', {
-    labels: r.top_overtime_employees.map(function(d){return d.name+' ('+d.department+')';}),
-    datasets: [{ label:'시간외(h)', data:r.top_overtime_employees.map(function(d){return d.total_hours;}),
-      backgroundColor:r.top_overtime_employees.map(function(_,i){return i<3?'rgba(239,68,68,0.7)':'rgba(37,99,235,0.5)';}) }]
+    labels: top.map(function(d){return d.name+' ('+d.department+')';}),
+    datasets: [{ label:'시간외(h)', data:top.map(function(d){return d.total_hours;}),
+      backgroundColor:top.map(function(_,i){return i<3?'rgba(239,68,68,0.7)':'rgba(37,99,235,0.5)';}) }]
   }, { indexAxis:'y', plugins:{ title:{ display:true, text:'시간외근무 상위 10명' } } });
 
   mkChart('trend', 'cTrend', 'line', {
-    labels: r.weekly_trend.map(function(w){return w.week;}),
-    datasets: [{ label:'주간 시간외(h)', data:r.weekly_trend.map(function(w){return w.total_hours;}),
+    labels: wt.map(function(w){return w.week;}),
+    datasets: [{ label:'주간 시간외(h)', data:wt.map(function(w){return w.total_hours;}),
       borderColor:'rgb(37,99,235)', fill:true, backgroundColor:'rgba(37,99,235,0.08)', tension:0.3 }]
   }, { plugins:{ title:{ display:true, text:'주간 시간외근무 추이' } } });
 }
@@ -217,7 +273,7 @@ async function loadStats(){
   var r = await API.allStats(curYM);
   if(!r.success) return;
   var tb = $('stb');
-  if(!r.stats.length){ tb.innerHTML='<tr><td colspan="7" class="px-3 py-10 text-center text-gray-400">데이터 없음</td></tr>'; return; }
+  if(!r.stats || !r.stats.length){ tb.innerHTML='<tr><td colspan="7" class="px-3 py-10 text-center text-gray-400">데이터 없음</td></tr>'; return; }
   tb.innerHTML = r.stats.map(function(s){
     return '<tr class="border-t border-gray-50 hover:bg-gray-50"><td class="px-3 py-2.5">'+s.employee_id+'</td><td class="px-3 py-2.5">'+s.name+'</td><td class="px-3 py-2.5">'+s.department+'</td><td class="px-3 py-2.5">'+s.year_month+'</td><td class="px-3 py-2.5 font-bold">'+s.total_overtime_hours+'h</td><td class="px-3 py-2.5">'+s.work_days+'</td><td class="px-3 py-2.5">'+s.overtime_days+'</td></tr>';
   }).join('');
@@ -228,7 +284,7 @@ async function loadStats(){
    ================================================ */
 async function exportCSV(){
   var r = await API.allStats(curYM);
-  if(!r.success||!r.stats.length){ alert('데이터 없음'); return; }
+  if(!r.success||!r.stats||!r.stats.length){ alert('데이터 없음'); return; }
   var hd = ['사번','이름','부서','년월','시간외(h)','출근일','초과일','평균(분)'];
   var rows = r.stats.map(function(s){return [s.employee_id,s.name,s.department,s.year_month,s.total_overtime_hours,s.work_days,s.overtime_days,s.avg_overtime_minutes];});
   var csv = '\uFEFF' + [hd].concat(rows).map(function(r){return r.join(',');}).join('\n');
@@ -246,7 +302,7 @@ async function addEmp(){
   if(!id||!nm||!dp){ alert('사번, 이름, 부서는 필수입니다.'); return; }
   var r = await API.addEmp({ employee_id:id, name:nm, department:dp, position:ps, initial_password:'0000', base_url:location.origin });
   if(r.success){
-    alert('직원 추가 완료!\n사번: '+id+'\nQR: '+r.qr_url+'\n초기 비밀번호: 0000');
+    alert('직원 추가 완료!\n사번: '+id+'\n초기 비밀번호: 0000');
     $('ne-id').value=''; $('ne-nm').value=''; $('ne-dp').value=''; $('ne-ps').value='';
     loadEmpList();
   } else { alert('실패: '+r.error); }
@@ -259,7 +315,7 @@ async function loadEmpList(){
   var r = await API.employees();
   if(!r.success) return;
   var el = $('elist');
-  if(!r.employees.length){ el.innerHTML='직원 없음'; return; }
+  if(!r.employees||!r.employees.length){ el.innerHTML='직원 없음'; return; }
   el.innerHTML =
     '<div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="bg-gray-50">' +
     '<th class="px-3 py-2 text-left font-bold">사번</th><th class="px-3 py-2 text-left font-bold">이름</th><th class="px-3 py-2 text-left font-bold">부서</th><th class="px-3 py-2 text-left font-bold">직급</th><th class="px-3 py-2 text-left font-bold">상태</th></tr></thead><tbody>' +
@@ -311,9 +367,8 @@ async function loadSettings(){
   var grid = $('sgrid');
   var days = [{k:'mon',l:'월'},{k:'tue',l:'화'},{k:'wed',l:'수'},{k:'thu',l:'목'},{k:'fri',l:'금'},{k:'sat',l:'토'},{k:'sun',l:'일'}];
 
-  // 서버에서 현재 설정 불러오기
   var r = await API.getSettings();
-  var sv = (r && r.success) ? r.settings : {};
+  var sv = (r && r.success && r.settings) ? r.settings : {};
 
   grid.innerHTML = days.map(function(d){
     var val = sv['base_clock_out_'+d.k] || (d.k==='sat'||d.k==='sun' ? '00:00' : '18:00');

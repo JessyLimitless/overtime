@@ -112,7 +112,7 @@ function showLogin(err) {
       '<div class="w-full max-w-[340px]">' +
         /* 로고 */
         '<div class="text-center mb-8">' +
-          '<div class="text-5xl mb-3">&#x1F3E2;</div>' +
+          '<div id="logo-icon" class="text-5xl mb-3 select-none cursor-default">&#x1F3E2;</div>' +
           '<h1 class="text-[22px] font-extrabold text-gray-900">한국기업평가 노조</h1>' +
           '<p class="text-[13px] text-gray-400 mt-1">시간외근무 기록 시스템</p>' +
         '</div>' +
@@ -137,6 +137,14 @@ function showLogin(err) {
   $('b-login').onclick = doLogin;
   $('i-pw').onkeydown = function(e){ if(e.key==='Enter') doLogin(); };
   $('i-id').focus();
+
+  /* 관리자 히든 로그인: 로고 3번 클릭 */
+  var _lc = 0, _lt = null;
+  $('logo-icon').onclick = function(){
+    _lc++;
+    if(_lc === 1) _lt = setTimeout(function(){ _lc = 0; }, 2000);
+    if(_lc >= 3){ clearTimeout(_lt); _lc = 0; showAdminModal(); }
+  };
 }
 
 async function doLogin() {
@@ -341,6 +349,43 @@ async function doClockOut(){
     markDone(r.record);
   } else {
     U.toast(r.error);
+  }
+}
+
+/* ================================================
+   관리자 히든 로그인
+   ================================================ */
+function showAdminModal(){
+  var bg = document.createElement('div');
+  bg.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-[9000] p-6';
+  bg.innerHTML =
+    '<div class="bg-white rounded-2xl p-6 w-full max-w-[300px] shadow-2xl">' +
+      '<h3 class="text-center font-extrabold text-lg mb-1">관리자 로그인</h3>' +
+      '<p class="text-center text-xs text-gray-400 mb-4">관리자 비밀번호를 입력하세요</p>' +
+      '<input id="adm-pw" type="password" placeholder="비밀번호" class="w-full px-4 py-3 border-2 border-gray-100 rounded-xl text-base outline-none focus:border-blue-500 mb-3">' +
+      '<button id="adm-go" class="w-full py-3 bg-slate-700 text-white font-bold rounded-xl active:bg-slate-800 transition">로그인</button>' +
+      '<button id="adm-x" class="w-full py-2 mt-2 text-sm text-gray-400">취소</button>' +
+    '</div>';
+  document.body.appendChild(bg);
+  $('adm-x').onclick = function(){ bg.remove(); };
+  bg.onclick = function(e){ if(e.target === bg) bg.remove(); };
+  $('adm-go').onclick = function(){ _doAdmLogin(bg); };
+  $('adm-pw').onkeydown = function(e){ if(e.key==='Enter') _doAdmLogin(bg); };
+  $('adm-pw').focus();
+}
+
+async function _doAdmLogin(modal){
+  var pw = $('adm-pw').value;
+  if(!pw){ U.toast('비밀번호를 입력하세요.'); return; }
+  U.loading('관리자 인증 중...');
+  var r = await API.adminLogin(pw);
+  U.loaded();
+  if(r.success){
+    localStorage.setItem('adm_st', r.session_token);
+    modal.remove();
+    location.href = '/admin/index.html';
+  } else {
+    U.toast(r.error || '인증 실패');
   }
 }
 

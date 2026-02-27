@@ -14,8 +14,8 @@
   };
   </script>
 
-  <!-- Chart.js -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <!-- Chart.js (defer로 로딩 블로킹 방지) -->
+  <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 
   <style>
     body { max-width:1280px; margin:0 auto; }
@@ -24,9 +24,9 @@
 </head>
 <body class="bg-slate-50 text-gray-900 font-sans min-h-screen">
 
-  <div id="root"></div>
+  <div id="root"><p style="text-align:center;padding:40px;color:#999">로딩 중...</p></div>
 
-  <script src="/js/api.js"></script>
-  <script src="/admin/admin.js"></script>
+  <!-- admin.js가 API 모듈을 자체 포함하므로 api.js 불필요 -->
+  <script src="admin.js"></script>
 </body>
 </html>
