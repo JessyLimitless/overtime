@@ -1,0 +1,5 @@
+{
+  "name": "kcr-overtime",
+  "scripts": { "start": "npx serve -s . -l 3000" },
+  "dependencies": { "serve": "^14.0.0" }
+}
