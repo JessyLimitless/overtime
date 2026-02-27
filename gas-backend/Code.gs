@@ -49,6 +49,7 @@ function _route(e, method) {
       case 'get_employees':      result = getEmployees(params);         break;
       case 'update_settings':    result = updateSettings(params);       break;
       case 'get_settings':       result = getSettings(params);          break;
+      case 'rebuild_stats':      result = _rebuildStats(params);        break;
 
       default:
         result = { success: false, error: 'Unknown action: ' + action };
@@ -68,6 +69,13 @@ function getSheet(name) {
   var sh = ss.getSheetByName(name);
   if (!sh) throw new Error('시트를 찾을 수 없습니다: ' + name);
   return sh;
+}
+
+function _rebuildStats(p) {
+  var s = verifySession(p.session_token);
+  if (!s.success) return s;
+  rebuildAllMonthlyStats();
+  return { success: true, message: '월별 통계 재생성 완료' };
 }
 
 function _json(obj) {

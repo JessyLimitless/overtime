@@ -70,6 +70,36 @@ function getMonthlySummary(p) {
   return { success:true, year:year, summaries:out };
 }
 
+/* ═══════ 전체 월별 통계 재생성 (GAS 에디터에서 수동 실행 또는 API 호출) ═══════ */
+
+function rebuildAllMonthlyStats() {
+  var statSheet = getSheet('시간외근무_월별통계');
+  // 기존 통계 전부 삭제 (헤더 제외)
+  var lastRow = statSheet.getLastRow();
+  if (lastRow > 1) statSheet.deleteRows(2, lastRow - 1);
+
+  // 퇴근기록에서 고유한 (employee_id, year-month) 조합 추출
+  var recs = getSheet('퇴근기록').getDataRange().getValues();
+  var seen = {};
+  for (var i = 1; i < recs.length; i++) {
+    var eid = String(recs[i][1]);
+    var d = new Date(recs[i][2]);
+    if (isNaN(d.getTime())) continue;
+    var ym = Utilities.formatDate(d, 'Asia/Seoul', 'yyyy-MM');
+    var key = eid + '_' + ym;
+    if (!seen[key]) {
+      seen[key] = { eid: eid, date: d };
+    }
+  }
+
+  // 각 조합에 대해 통계 재생성
+  var keys = Object.keys(seen);
+  for (var i = 0; i < keys.length; i++) {
+    updateMonthlyStats(seen[keys[i]].eid, seen[keys[i]].date);
+  }
+  Logger.log('월별 통계 재생성 완료: ' + keys.length + '건');
+}
+
 /* ═══════ 월별 통계 갱신 (내부) ═══════ */
 
 function updateMonthlyStats(eid, date) {
@@ -105,6 +135,7 @@ function updateMonthlyStats(eid, date) {
   for (var i = 1; i < sd.length; i++) {
     if (String(sd[i][0]) === sid) {
       var r = i + 1;
+      ss.getRange(r,5).setValue(ym).setNumberFormat('@');
       ss.getRange(r,6).setValue(totMin);  ss.getRange(r,7).setValue(totH);
       ss.getRange(r,8).setValue(wDays);   ss.getRange(r,9).setValue(otDays);
       ss.getRange(r,10).setValue(avg);    ss.getRange(r,11).setValue(maxDt);
@@ -112,5 +143,7 @@ function updateMonthlyStats(eid, date) {
       return;
     }
   }
+  var newRow = ss.getLastRow() + 1;
   ss.appendRow([sid, eid, nm, dp, ym, totMin, totH, wDays, otDays, avg, maxDt, maxMin]);
+  ss.getRange(newRow, 5).setNumberFormat('@');
 }

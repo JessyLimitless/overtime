@@ -25,10 +25,11 @@ function getAllStats(p) {
   var rows = getSheet('시간외근무_월별통계').getDataRange().getValues();
   var out = [];
   for (var i = 1; i < rows.length; i++) {
-    if (ym && rows[i][4] !== ym) continue;
+    var cellYM = _toYM(rows[i][4]);
+    if (ym && cellYM !== ym) continue;
     out.push({
       employee_id:rows[i][1], name:rows[i][2], department:rows[i][3],
-      year_month:rows[i][4], total_overtime_hours:rows[i][6],
+      year_month:cellYM, total_overtime_hours:rows[i][6],
       work_days:rows[i][7], overtime_days:rows[i][8], avg_overtime_minutes:rows[i][9]
     });
   }
@@ -44,7 +45,7 @@ function getDashboardData(p) {
 
   var dept = {}, personal = [];
   for (var i = 1; i < rows.length; i++) {
-    if (rows[i][4] !== ym) continue;
+    if (_toYM(rows[i][4]) !== ym) continue;
     var d = rows[i][3];
     if (!dept[d]) dept[d] = { h:0, n:0 };
     dept[d].h += rows[i][6]; dept[d].n++;
@@ -193,3 +194,9 @@ function _log(action, target, detail) {
 }
 
 function _r2(n) { return Math.round(n * 100) / 100; }
+
+/* year_month 셀 값을 "yyyy-MM" 문자열로 변환 (Sheets가 Date로 자동변환하는 문제 방어) */
+function _toYM(v) {
+  if (v instanceof Date) return Utilities.formatDate(v, 'Asia/Seoul', 'yyyy-MM');
+  return String(v);
+}
