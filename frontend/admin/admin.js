@@ -271,7 +271,7 @@ function mkChart(key, canvasId, type, data, opts){
    ================================================ */
 async function loadStats(){
   var r = await API.allStats(curYM);
-  if(!r.success) return;
+  if(!r.success){ $('stb').innerHTML='<tr><td colspan="7" class="px-3 py-10 text-center text-red-400">데이터 로드 실패: '+(r.error||'알 수 없는 오류')+'</td></tr>'; return; }
   var tb = $('stb');
   if(!r.stats || !r.stats.length){ tb.innerHTML='<tr><td colspan="7" class="px-3 py-10 text-center text-gray-400">데이터 없음</td></tr>'; return; }
   tb.innerHTML = r.stats.map(function(s){
