@@ -2,7 +2,7 @@
  * api.js - Apps Script Web App 통신 모듈
  * 모든 API 호출을 POST + JSON body (Content-Type: text/plain) 로 수행
  */
-var API_BASE = 'https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec';
+var API_BASE = 'https://script.google.com/macros/s/AKfycbzE_jenZo_g-B-7nr8anny6xRNUpts8L9LHIv2OQIUkW8PHFmY41_Wq1iUDmabHp-G5oA/exec';
 
 var API = {
   /** 공통 요청 */
