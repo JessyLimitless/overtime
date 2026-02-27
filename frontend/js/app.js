@@ -1,399 +1,400 @@
 /**
- * app.js - KCR Overtime Tracker 조합원 모바일 웹 SPA
- * Tailwind CSS + Vanilla JS
+ * app.js - 조합원 모바일 웹 SPA
+ * 로그인 · 메인(퇴근확정) · 기록조회 · 내정보
  */
 
-/* ============================
-   유틸리티
-   ============================ */
+/* ================================================
+   유틸
+   ================================================ */
+function $(id){ return document.getElementById(id); }
 
-const U = {
-  $(id) { return document.getElementById(id); },
-
-  fmtOT(min) {
-    if (!min || min <= 0) return '-';
-    var h = Math.floor(min / 60), m = min % 60;
-    if (h > 0 && m > 0) return h + '시간 ' + m + '분';
-    return h > 0 ? h + '시간' : m + '분';
+var U = {
+  /* 시간외근무 분→텍스트 */
+  ot: function(m){
+    if(!m||m<=0) return '-';
+    var h=Math.floor(m/60), r=m%60;
+    if(h&&r) return h+'시간 '+r+'분';
+    return h ? h+'시간' : r+'분';
   },
-
-  todayStr() {
-    var n = new Date();
-    var days = ['일','월','화','수','목','금','토'];
-    var y = n.getFullYear();
-    var m = String(n.getMonth()+1).padStart(2,'0');
-    var d = String(n.getDate()).padStart(2,'0');
-    return y + '.' + m + '.' + d + ' (' + days[n.getDay()] + ')';
+  /* 오늘 날짜 텍스트 */
+  today: function(){
+    var n=new Date(), d=['일','월','화','수','목','금','토'];
+    return n.getFullYear()+'.'+String(n.getMonth()+1).padStart(2,'0')+'.'+String(n.getDate()).padStart(2,'0')+' ('+d[n.getDay()]+')';
   },
-
-  showLoading(msg) {
-    var el = U.$('loading');
-    if (el) { el.querySelector('span').textContent = msg || '로딩 중...'; el.classList.remove('hidden'); }
+  /* 로딩 */
+  loading: function(msg){
+    $('ld-text').textContent = msg||'로딩 중...';
+    $('ld').classList.remove('hidden');
   },
-  hideLoading() { var el = U.$('loading'); if (el) el.classList.add('hidden'); },
-
-  toast(msg, type) {
-    type = type || 'info';
-    var colors = { success: 'bg-emerald-500', error: 'bg-red-500', info: 'bg-blue-600' };
-    var t = document.createElement('div');
-    t.className = 'fixed top-4 left-1/2 -translate-x-1/2 px-5 py-3 rounded-xl text-white text-sm font-medium shadow-lg z-[9999] transition-all duration-300 opacity-0 -translate-y-2 ' + (colors[type] || colors.info);
-    t.textContent = msg;
-    document.body.appendChild(t);
-    requestAnimationFrame(function(){ t.classList.remove('opacity-0','-translate-y-2'); });
-    setTimeout(function(){
-      t.classList.add('opacity-0','-translate-y-2');
-      setTimeout(function(){ t.remove(); }, 300);
-    }, 2500);
+  loaded: function(){ $('ld').classList.add('hidden'); },
+  /* 토스트 */
+  toast: function(msg, ok){
+    var el = document.createElement('div');
+    el.className = 'fixed top-5 left-1/2 -translate-x-1/2 z-[9999] px-5 py-3 rounded-2xl text-white text-sm font-semibold shadow-xl transition-all duration-300 opacity-0 -translate-y-3 '
+      + (ok ? 'bg-emerald-500' : 'bg-red-500');
+    el.textContent = msg;
+    document.body.appendChild(el);
+    requestAnimationFrame(function(){ el.classList.remove('opacity-0','-translate-y-3'); });
+    setTimeout(function(){ el.classList.add('opacity-0','-translate-y-3'); setTimeout(function(){ el.remove(); },300); }, 2800);
   },
-
-  confirm(msg) {
-    return new Promise(function(resolve) {
+  /* 확인 모달 */
+  confirm: function(msg){
+    return new Promise(function(res){
       var bg = document.createElement('div');
-      bg.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-[9000] p-5';
+      bg.className = 'fixed inset-0 bg-black/50 flex items-center justify-center z-[9000] p-6';
       bg.innerHTML =
-        '<div class="bg-white rounded-2xl p-6 max-w-xs w-full shadow-xl">' +
-          '<p class="text-center text-base leading-relaxed mb-5 whitespace-pre-line">' + msg + '</p>' +
+        '<div class="bg-white rounded-2xl p-6 w-full max-w-[300px] shadow-2xl">' +
+          '<p class="text-center text-[15px] leading-relaxed whitespace-pre-line mb-6">' + msg + '</p>' +
           '<div class="flex gap-3">' +
-            '<button id="_mc" class="flex-1 py-3 rounded-xl bg-gray-100 text-gray-700 font-semibold">취소</button>' +
-            '<button id="_mo" class="flex-1 py-3 rounded-xl bg-blue-600 text-white font-semibold">확인</button>' +
+            '<button id="_cn" class="flex-1 py-3 rounded-xl bg-gray-100 font-semibold text-gray-600 active:bg-gray-200">취소</button>' +
+            '<button id="_co" class="flex-1 py-3 rounded-xl bg-blue-600 font-semibold text-white active:bg-blue-700">확인</button>' +
           '</div>' +
         '</div>';
       document.body.appendChild(bg);
-      U.$('_mc').onclick = function(){ bg.remove(); resolve(false); };
-      U.$('_mo').onclick = function(){ bg.remove(); resolve(true); };
+      $('_cn').onclick = function(){ bg.remove(); res(false); };
+      $('_co').onclick = function(){ bg.remove(); res(true); };
     });
-  }
+  },
+  /* HTML 이스케이프 */
+  esc: function(s){ var d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
 };
 
-/* ============================
-   App 클래스
-   ============================ */
+/* ================================================
+   앱 상태
+   ================================================ */
+var me = null;        // 로그인된 직원 정보
+var baseClock = null; // 기준 퇴근시간
+var recorded = false; // 오늘 기록 여부
+var timer = null;     // 시계 인터벌
 
-var App = {
-  employee: null,
-  baseClock: null,
-  alreadyRecorded: false,
-  clockTimer: null,
+/* ================================================
+   초기화
+   ================================================ */
+document.addEventListener('DOMContentLoaded', async function(){
+  // QR 토큰 확인
+  var t = new URLSearchParams(location.search).get('t');
+  if (t) { await qrLogin(t); return; }
 
-  /* ── 초기화 ── */
-  async init() {
-    var token = new URLSearchParams(location.search).get('t');
-    if (token) { await this.loginWithToken(token); return; }
+  // 저장된 세션 확인
+  if (localStorage.getItem('st')) {
+    U.loading('세션 확인 중...');
+    var r = await API.verify();
+    U.loaded();
+    if (r.success) { me = r.employee; localStorage.setItem('emp', JSON.stringify(me)); showMain(); return; }
+    localStorage.removeItem('st');
+  }
+  showLogin();
+});
 
-    if (localStorage.getItem('session_token')) {
-      U.showLoading('세션 확인 중...');
-      var r = await API.verifySession();
-      U.hideLoading();
-      if (r.success) { this.employee = r.employee; localStorage.setItem('employee', JSON.stringify(r.employee)); this.showMain(); return; }
-      localStorage.removeItem('session_token');
-    }
-    this.showLogin();
-  },
+/* ================================================
+   QR 토큰 로그인
+   ================================================ */
+async function qrLogin(token) {
+  U.loading('QR 인증 중...');
+  var r = await API.loginToken(token);
+  U.loaded();
+  if (r.success) {
+    localStorage.setItem('st', r.session_token);
+    me = r.employee; localStorage.setItem('emp', JSON.stringify(me));
+    history.replaceState(null, '', location.pathname);
+    showMain();
+  } else {
+    showLogin(r.error);
+  }
+}
 
-  async loginWithToken(token) {
-    U.showLoading('QR 인증 중...');
-    var r = await API.loginToken(token);
-    U.hideLoading();
-    if (r.success) {
-      localStorage.setItem('session_token', r.session_token);
-      localStorage.setItem('employee', JSON.stringify(r.employee));
-      this.employee = r.employee;
-      history.replaceState({}, '', '/');
-      this.showMain();
-    } else { this.showLogin(r.error); }
-  },
-
-  /* ── 로그인 화면 ── */
-  showLogin(err) {
-    U.$('app').innerHTML =
-      '<div class="min-h-dvh flex items-center justify-center p-5">' +
-        '<div class="w-full max-w-sm">' +
-          '<div class="text-center mb-8">' +
-            '<div class="text-5xl mb-3">&#x1F3E2;</div>' +
-            '<h1 class="text-xl font-bold text-gray-900">한국기업평가 노조</h1>' +
-            '<p class="text-sm text-gray-500 mt-1">시간외근무 기록 시스템</p>' +
-          '</div>' +
-          (err ? '<div class="bg-red-50 text-red-600 text-sm rounded-xl px-4 py-3 mb-4">' + err + '</div>' : '') +
-          '<div class="bg-white rounded-2xl p-6 shadow-md">' +
-            '<div class="mb-4"><label class="block text-xs font-semibold text-gray-600 mb-1.5">사번</label>' +
-              '<input id="inp-id" type="text" placeholder="사번을 입력하세요" class="w-full px-4 py-3 border border-gray-200 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"></div>' +
-            '<div class="mb-5"><label class="block text-xs font-semibold text-gray-600 mb-1.5">비밀번호</label>' +
-              '<input id="inp-pw" type="password" placeholder="비밀번호를 입력하세요" class="w-full px-4 py-3 border border-gray-200 rounded-xl text-base focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"></div>' +
-            '<button id="btn-login" class="w-full py-3.5 bg-blue-600 text-white font-bold rounded-xl text-base active:bg-blue-700 transition">로그인</button>' +
-          '</div>' +
-          '<p class="text-center text-xs text-gray-400 mt-4">* QR코드로 접속 시 자동 인식됩니다</p>' +
+/* ================================================
+   로그인 화면
+   ================================================ */
+function showLogin(err) {
+  $('app').innerHTML =
+    '<div class="min-h-dvh flex items-center justify-center p-5">' +
+      '<div class="w-full max-w-[340px]">' +
+        /* 로고 */
+        '<div class="text-center mb-8">' +
+          '<div class="text-5xl mb-3">&#x1F3E2;</div>' +
+          '<h1 class="text-[22px] font-extrabold text-gray-900">한국기업평가 노조</h1>' +
+          '<p class="text-[13px] text-gray-400 mt-1">시간외근무 기록 시스템</p>' +
         '</div>' +
-      '</div>';
-
-    U.$('btn-login').onclick = function(){ App.doLogin(); };
-    U.$('inp-pw').onkeypress = function(e){ if(e.key==='Enter') App.doLogin(); };
-  },
-
-  async doLogin() {
-    var id = U.$('inp-id').value.trim();
-    var pw = U.$('inp-pw').value;
-    if (!id || !pw) { U.toast('사번과 비밀번호를 입력해주세요.', 'error'); return; }
-
-    U.showLoading('로그인 중...');
-    var r = await API.login(id, pw);
-    U.hideLoading();
-
-    if (r.success) {
-      localStorage.setItem('session_token', r.session_token);
-      localStorage.setItem('employee', JSON.stringify(r.employee));
-      this.employee = r.employee;
-      this.showMain();
-    } else { U.toast(r.error, 'error'); }
-  },
-
-  /* ── 메인 화면 ── */
-  showMain() {
-    var e = this.employee;
-    U.$('app').innerHTML =
-      /* 헤더 */
-      '<header class="sticky top-0 z-50 bg-white border-b border-gray-100 px-4 py-3 flex items-center justify-between">' +
-        '<div class="flex items-center gap-1.5"><span class="font-bold text-gray-900">' + e.name + '</span><span class="text-xs text-gray-400">(' + e.department + ')</span></div>' +
-        '<button id="btn-out" class="p-2 rounded-lg text-gray-400 hover:bg-gray-100" title="로그아웃">' +
-          '<svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>' +
-        '</button>' +
-      '</header>' +
-
-      /* 컨텐츠 영역 */
-      '<div class="pb-24 px-4 pt-4" id="content">' +
-        /* -- 홈 탭 -- */
-        '<div id="tab-home">' +
-          '<p class="text-center text-gray-500 text-sm mb-5" id="today-date">' + U.todayStr() + '</p>' +
-          '<div class="bg-white rounded-2xl p-6 shadow-sm text-center mb-5">' +
-            '<p class="text-xs text-gray-400 mb-2">현재 시간</p>' +
-            '<div id="clock" class="text-5xl font-bold tabular-nums tracking-wider text-gray-900">--:--:--</div>' +
+        /* 에러 */
+        (err ? '<div class="bg-red-50 text-red-600 text-sm rounded-xl px-4 py-3 mb-4 text-center">' + U.esc(err) + '</div>' : '') +
+        /* 폼 */
+        '<div class="bg-white rounded-2xl p-6 shadow-lg">' +
+          '<div class="mb-4">' +
+            '<label class="block text-xs font-bold text-gray-500 mb-1.5">사번</label>' +
+            '<input id="i-id" type="text" placeholder="사번 입력" class="w-full px-4 py-3 border-2 border-gray-100 rounded-xl text-base outline-none focus:border-blue-500 transition">' +
           '</div>' +
-          '<div class="bg-white rounded-2xl shadow-sm mb-6">' +
-            '<div class="flex justify-between items-center px-5 py-3.5">' +
-              '<span class="text-sm text-gray-500">기준 퇴근</span>' +
-              '<span class="font-semibold text-gray-900" id="base-time">--:--</span>' +
-            '</div>' +
-            '<div class="border-t border-gray-50 flex justify-between items-center px-5 py-3.5">' +
-              '<span class="text-sm text-gray-500">시간외근무</span>' +
-              '<span class="font-semibold text-blue-600" id="ot-display">-</span>' +
-            '</div>' +
+          '<div class="mb-5">' +
+            '<label class="block text-xs font-bold text-gray-500 mb-1.5">비밀번호</label>' +
+            '<input id="i-pw" type="password" placeholder="비밀번호 입력" class="w-full px-4 py-3 border-2 border-gray-100 rounded-xl text-base outline-none focus:border-blue-500 transition">' +
           '</div>' +
-          '<button id="btn-clockout" class="w-full py-5 bg-blue-600 text-white text-xl font-bold rounded-2xl shadow-md active:scale-[0.98] active:bg-blue-700 transition-all">&#x23F0; 퇴근 확정</button>' +
-          '<p class="text-center text-xs text-gray-400 mt-3" id="gps-msg"></p>' +
-          '<div id="recorded-box" class="hidden mt-5 bg-emerald-50 rounded-2xl p-5 text-center">' +
-            '<div class="text-4xl mb-2">&#x2705;</div>' +
-            '<p class="font-semibold text-emerald-600 mb-2">오늘 퇴근이 기록되었습니다</p>' +
-            '<div id="recorded-detail" class="text-sm text-gray-600"></div>' +
-          '</div>' +
+          '<button id="b-login" class="w-full py-3.5 bg-blue-600 text-white font-bold rounded-xl text-base active:bg-blue-700 transition">로그인</button>' +
         '</div>' +
-
-        /* -- 기록 탭 -- */
-        '<div id="tab-records" class="hidden">' +
-          '<div class="flex justify-between items-center mb-4">' +
-            '<h2 class="text-lg font-bold">기록 조회</h2>' +
-            '<select id="sel-year" class="px-3 py-2 border border-gray-200 rounded-xl text-sm bg-white"></select>' +
-          '</div>' +
-          '<div id="records-list"></div>' +
-        '</div>' +
-
-        /* -- 내 정보 탭 -- */
-        '<div id="tab-profile" class="hidden">' +
-          '<h2 class="text-lg font-bold mb-4">내 정보</h2>' +
-          '<div class="bg-white rounded-2xl shadow-sm divide-y divide-gray-50">' +
-            this._profRow('이름', e.name) +
-            this._profRow('사번', e.employee_id) +
-            this._profRow('부서', e.department) +
-            this._profRow('직급', e.position || '-') +
-          '</div>' +
-          '<button id="btn-logout2" class="w-full mt-6 py-3.5 bg-red-500 text-white font-bold rounded-xl">로그아웃</button>' +
-        '</div>' +
+        '<p class="text-center text-[11px] text-gray-400 mt-5">QR코드로 접속 시 자동 인식됩니다</p>' +
       '</div>' +
+    '</div>';
 
-      /* 하단 네비게이션 */
-      '<nav class="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[480px] bg-white border-t border-gray-100 flex pb-[env(safe-area-inset-bottom)] z-50">' +
-        '<a href="#" data-tab="home" class="nav-item flex-1 text-center pt-2.5 pb-2 text-blue-600">' +
-          '<span class="block text-xl">&#x1F3E0;</span><span class="block text-[11px] font-medium">홈</span></a>' +
-        '<a href="#" data-tab="records" class="nav-item flex-1 text-center pt-2.5 pb-2 text-gray-400">' +
-          '<span class="block text-xl">&#x1F4CB;</span><span class="block text-[11px] font-medium">기록</span></a>' +
-        '<a href="#" data-tab="profile" class="nav-item flex-1 text-center pt-2.5 pb-2 text-gray-400">' +
-          '<span class="block text-xl">&#x1F464;</span><span class="block text-[11px] font-medium">정보</span></a>' +
-      '</nav>';
+  $('b-login').onclick = doLogin;
+  $('i-pw').onkeydown = function(e){ if(e.key==='Enter') doLogin(); };
+  $('i-id').focus();
+}
 
-    this.bindMain();
-    this.startClock();
-    this.loadStatus();
-  },
+async function doLogin() {
+  var id = $('i-id').value.trim(), pw = $('i-pw').value;
+  if (!id||!pw) { U.toast('사번과 비밀번호를 입력하세요.'); return; }
+  U.loading('로그인 중...');
+  var r = await API.login(id, pw);
+  U.loaded();
+  if (r.success) {
+    localStorage.setItem('st', r.session_token);
+    me = r.employee; localStorage.setItem('emp', JSON.stringify(me));
+    showMain();
+  } else { U.toast(r.error); }
+}
 
-  _profRow(label, val) {
-    return '<div class="flex justify-between px-5 py-3.5"><span class="text-sm text-gray-500">' + label + '</span><span class="text-sm font-semibold">' + val + '</span></div>';
-  },
+/* ================================================
+   메인 화면
+   ================================================ */
+function showMain() {
+  recorded = false;
+  baseClock = null;
 
-  bindMain() {
-    U.$('btn-out').onclick = function(){ App.logout(); };
-    U.$('btn-logout2').onclick = function(){ App.logout(); };
-    U.$('btn-clockout').onclick = function(){ App.doClockOut(); };
+  $('app').innerHTML =
+    /* ── 헤더 ── */
+    '<header class="sticky top-0 z-50 bg-white/95 backdrop-blur border-b border-gray-100 px-4 py-3 flex items-center justify-between">' +
+      '<div class="flex items-center gap-1.5">' +
+        '<span class="font-bold text-[15px]">' + U.esc(me.name) + '</span>' +
+        '<span class="text-xs text-gray-400">' + U.esc(me.department) + '</span>' +
+      '</div>' +
+      '<button id="b-out" class="p-2 rounded-lg text-gray-400 active:bg-gray-100" title="로그아웃">' +
+        '<svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>' +
+      '</button>' +
+    '</header>' +
 
-    // 네비게이션
-    document.querySelectorAll('.nav-item').forEach(function(a) {
-      a.onclick = function(ev) {
-        ev.preventDefault();
-        var tab = a.dataset.tab;
-        document.querySelectorAll('.nav-item').forEach(function(n){ n.classList.remove('text-blue-600'); n.classList.add('text-gray-400'); });
-        a.classList.remove('text-gray-400'); a.classList.add('text-blue-600');
-        ['home','records','profile'].forEach(function(t){ U.$('tab-'+t).classList.toggle('hidden', t !== tab); });
-        if (tab === 'records') App.loadRecords();
-      };
-    });
+    /* ── 탭 콘텐츠 ── */
+    '<div id="pages" class="px-4 pt-4 pb-28">' +
 
-    // 연도 셀렉트
-    var sel = U.$('sel-year');
-    var y = new Date().getFullYear();
-    [y, y-1].forEach(function(yr){
-      var o = document.createElement('option'); o.value = yr; o.textContent = yr + '년'; sel.appendChild(o);
-    });
-    sel.onchange = function(){ App.loadRecords(Number(sel.value)); };
-  },
+      /* 홈 */
+      '<section id="pg-home">' +
+        '<p class="text-center text-sm text-gray-500 mb-5">' + U.today() + '</p>' +
+        '<div class="bg-white rounded-2xl p-7 shadow text-center mb-5">' +
+          '<p class="text-xs text-gray-400 mb-2">현재 시간</p>' +
+          '<div id="clk" class="text-[52px] font-extrabold tracking-wider tabular-nums text-gray-900 leading-none">--:--:--</div>' +
+        '</div>' +
+        '<div class="bg-white rounded-2xl shadow divide-y divide-gray-50 mb-6">' +
+          '<div class="flex justify-between px-5 py-4"><span class="text-sm text-gray-500">기준 퇴근</span><span id="v-base" class="text-[15px] font-bold">--:--</span></div>' +
+          '<div class="flex justify-between px-5 py-4"><span class="text-sm text-gray-500">시간외근무</span><span id="v-ot" class="text-[15px] font-bold text-blue-600">-</span></div>' +
+        '</div>' +
+        '<button id="b-clk" class="w-full py-5 bg-blue-600 text-white text-xl font-extrabold rounded-2xl shadow-lg active:scale-[0.98] active:bg-blue-700 transition-all">&#x23F0; 퇴근 확정</button>' +
+        '<p id="gps-msg" class="text-center text-xs text-gray-400 mt-3"></p>' +
+        /* 기록 완료 박스 */
+        '<div id="done-box" class="hidden mt-5 bg-emerald-50 rounded-2xl p-6 text-center">' +
+          '<div class="text-4xl mb-2">&#x2705;</div>' +
+          '<p class="font-bold text-emerald-600 mb-3">오늘 퇴근이 기록되었습니다</p>' +
+          '<div id="done-info" class="text-sm text-gray-600 space-y-1"></div>' +
+        '</div>' +
+      '</section>' +
 
-  logout() {
-    localStorage.removeItem('session_token');
-    localStorage.removeItem('employee');
-    location.reload();
-  },
+      /* 기록 */
+      '<section id="pg-rec" class="hidden">' +
+        '<div class="flex items-center justify-between mb-4">' +
+          '<h2 class="text-lg font-extrabold">기록 조회</h2>' +
+          '<select id="sel-y" class="px-3 py-2 border-2 border-gray-100 rounded-xl text-sm bg-white focus:border-blue-500 outline-none"></select>' +
+        '</div>' +
+        '<div id="rec-list"></div>' +
+      '</section>' +
 
-  /* ── 시계 ── */
-  startClock() {
-    if (this.clockTimer) clearInterval(this.clockTimer);
-    this.tickClock();
-    this.clockTimer = setInterval(function(){ App.tickClock(); }, 1000);
-  },
+      /* 내 정보 */
+      '<section id="pg-me" class="hidden">' +
+        '<h2 class="text-lg font-extrabold mb-4">내 정보</h2>' +
+        '<div class="bg-white rounded-2xl shadow divide-y divide-gray-50">' +
+          row('이름', me.name) + row('사번', me.employee_id) + row('부서', me.department) + row('직급', me.position||'-') +
+        '</div>' +
+        '<button id="b-out2" class="w-full mt-6 py-3.5 bg-red-500 text-white font-bold rounded-xl active:bg-red-600 transition">로그아웃</button>' +
+      '</section>' +
 
-  tickClock() {
-    var now = new Date();
-    var el = U.$('clock');
-    if (el) el.textContent = now.toLocaleTimeString('ko-KR', { hour12: false });
+    '</div>' +
 
-    if (this.baseClock && !this.alreadyRecorded) {
-      var parts = this.baseClock.split(':');
-      var bm = Number(parts[0]) * 60 + Number(parts[1]);
-      var nm = now.getHours() * 60 + now.getMinutes();
-      var diff = nm - bm;
-      var otEl = U.$('ot-display');
-      if (otEl) otEl.textContent = diff > 0 ? U.fmtOT(diff) : '-';
-    }
-  },
+    /* ── 하단 네비게이션 ── */
+    '<nav class="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[480px] bg-white border-t border-gray-100 flex safe-pb z-50">' +
+      '<a href="#" data-p="home" class="nv flex-1 text-center pt-2.5 pb-2 text-blue-600"><span class="block text-xl leading-none">&#x1F3E0;</span><span class="block text-[10px] font-semibold mt-0.5">홈</span></a>' +
+      '<a href="#" data-p="rec"  class="nv flex-1 text-center pt-2.5 pb-2 text-gray-400"><span class="block text-xl leading-none">&#x1F4CB;</span><span class="block text-[10px] font-semibold mt-0.5">기록</span></a>' +
+      '<a href="#" data-p="me"   class="nv flex-1 text-center pt-2.5 pb-2 text-gray-400"><span class="block text-xl leading-none">&#x1F464;</span><span class="block text-[10px] font-semibold mt-0.5">정보</span></a>' +
+    '</nav>';
 
-  /* ── 상태 조회 ── */
-  async loadStatus() {
-    var r = await API.getStatus();
-    if (!r || !r.success) return;
+  bindMain();
+  startClock();
+  loadStatus();
+}
 
-    this.baseClock = r.base_clock_out;
-    var btEl = U.$('base-time');
-    if (btEl) btEl.textContent = r.base_clock_out;
+function row(l,v){
+  return '<div class="flex justify-between px-5 py-4"><span class="text-sm text-gray-500">' + U.esc(l) + '</span><span class="text-sm font-bold">' + U.esc(v) + '</span></div>';
+}
 
-    if (r.already_recorded) this.markRecorded(r.today_record);
-  },
+/* ── 이벤트 바인딩 ── */
+function bindMain(){
+  $('b-out').onclick = $('b-out2').onclick = logout;
+  $('b-clk').onclick = doClockOut;
 
-  markRecorded(rec) {
-    this.alreadyRecorded = true;
-    var btn = U.$('btn-clockout');
-    if (btn) {
-      btn.disabled = true;
-      btn.textContent = '오늘 퇴근 기록 완료';
-      btn.className = 'w-full py-5 bg-gray-200 text-gray-500 text-xl font-bold rounded-2xl cursor-default';
-    }
-    var box = U.$('recorded-box');
-    if (box) box.classList.remove('hidden');
-    var det = U.$('recorded-detail');
-    if (det && rec) {
-      var ct = typeof rec.clock_out_time === 'string' ? rec.clock_out_time : '';
-      det.innerHTML = '<p>퇴근 시간: <strong>' + ct + '</strong></p><p>시간외근무: <strong>' + U.fmtOT(rec.overtime_minutes) + '</strong></p>';
-    }
-    var otEl = U.$('ot-display');
-    if (otEl && rec) otEl.textContent = U.fmtOT(rec.overtime_minutes);
-  },
+  /* 탭 네비 */
+  document.querySelectorAll('.nv').forEach(function(a){
+    a.onclick = function(e){
+      e.preventDefault();
+      var p = a.dataset.p;
+      document.querySelectorAll('.nv').forEach(function(n){ n.classList.remove('text-blue-600'); n.classList.add('text-gray-400'); });
+      a.classList.remove('text-gray-400'); a.classList.add('text-blue-600');
+      ['home','rec','me'].forEach(function(t){ $('pg-'+t).classList.toggle('hidden', t!==p); });
+      if(p==='rec') loadRecords();
+    };
+  });
 
-  /* ── 퇴근 확정 ── */
-  async doClockOut() {
-    if (this.alreadyRecorded) return;
-    var ok = await U.confirm('퇴근을 확정하시겠습니까?\n확정 후 수정이 불가합니다.');
-    if (!ok) return;
+  /* 연도 셀렉트 */
+  var sel = $('sel-y'), y = new Date().getFullYear();
+  [y, y-1].forEach(function(yr){ var o=document.createElement('option'); o.value=yr; o.textContent=yr+'년'; sel.appendChild(o); });
+  sel.onchange = function(){ loadRecords(Number(sel.value)); };
+}
 
-    U.showLoading('기록 중...');
+function logout(){
+  localStorage.removeItem('st');
+  localStorage.removeItem('emp');
+  location.reload();
+}
 
-    var lat = null, lng = null;
-    try {
-      var pos = await new Promise(function(res, rej) {
-        navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 });
-      });
-      lat = pos.coords.latitude; lng = pos.coords.longitude;
-      var gm = U.$('gps-msg');
-      if (gm) gm.textContent = '&#x1F4CD; 위치 확인됨';
-    } catch(e) {}
+/* ================================================
+   시계
+   ================================================ */
+function startClock(){
+  if(timer) clearInterval(timer);
+  tick();
+  timer = setInterval(tick, 1000);
+}
 
-    var r = await API.clockOut(lat, lng);
-    U.hideLoading();
+function tick(){
+  var now = new Date();
+  var el = $('clk');
+  if(el) el.textContent = now.toLocaleTimeString('ko-KR',{hour12:false});
 
-    if (r.success) {
-      U.toast('퇴근이 기록되었습니다!', 'success');
-      this.markRecorded(r.record);
-    } else {
-      U.toast(r.error, 'error');
-    }
-  },
-
-  /* ── 기록 조회 ── */
-  async loadRecords(year) {
-    year = year || new Date().getFullYear();
-    U.showLoading('기록 조회 중...');
-    var r = await API.getRecords(year);
-    U.hideLoading();
-
-    var box = U.$('records-list');
-    if (!box) return;
-
-    if (!r.success || !r.records || r.records.length === 0) {
-      box.innerHTML = '<div class="text-center py-12 text-gray-400 text-sm">기록이 없습니다.</div>';
-      return;
-    }
-
-    // 월별 그룹핑
-    var grouped = {};
-    r.records.forEach(function(rec) {
-      var m = rec.record_date.substring(0, 7);
-      if (!grouped[m]) grouped[m] = { records: [], totalMin: 0 };
-      grouped[m].records.push(rec);
-      grouped[m].totalMin += rec.overtime_minutes;
-    });
-
-    var months = Object.keys(grouped).sort().reverse();
-    var html = '';
-
-    months.forEach(function(m) {
-      var g = grouped[m];
-      var label = m.replace('-', '년 ') + '월';
-      var totalH = Math.round((g.totalMin / 60) * 10) / 10;
-
-      html += '<div class="mb-5">';
-      html += '<div class="flex justify-between items-center pb-2 mb-2 border-b-2 border-gray-200">';
-      html += '<span class="font-bold text-gray-800 text-sm">' + label + '</span>';
-      html += '<span class="text-xs font-semibold text-blue-600">합계: ' + totalH + '시간</span>';
-      html += '</div>';
-
-      g.records.forEach(function(rec) {
-        var ds = rec.record_date.substring(5);
-        html += '<div class="flex items-center bg-white rounded-xl px-4 py-3 mb-1.5 shadow-sm">';
-        html += '<div class="w-20"><span class="text-sm font-semibold text-gray-800">' + ds + '</span> <span class="text-xs text-gray-400">(' + (rec.day_of_week || '') + ')</span></div>';
-        html += '<div class="flex-1 text-center text-sm font-medium">' + rec.clock_out_time + '</div>';
-        html += '<div class="w-24 text-right text-xs font-semibold text-blue-600">' + U.fmtOT(rec.overtime_minutes) + '</div>';
-        html += '</div>';
-      });
-
-      html += '</div>';
-    });
-
-    box.innerHTML = html;
+  if(baseClock && !recorded){
+    var bp = baseClock.split(':');
+    var bm = Number(bp[0])*60 + Number(bp[1]);
+    var nm = now.getHours()*60 + now.getMinutes();
+    var d = nm - bm;
+    var oe = $('v-ot');
+    if(oe) oe.textContent = d > 0 ? U.ot(d) : '-';
   }
-};
+}
 
-/* ── 앱 시작 ── */
-document.addEventListener('DOMContentLoaded', function() { App.init(); });
+/* ================================================
+   상태 조회
+   ================================================ */
+async function loadStatus(){
+  var r = await API.status();
+  if(!r||!r.success) return;
+  baseClock = r.base_clock_out;
+  var be = $('v-base');
+  if(be) be.textContent = r.base_clock_out;
+  if(r.already_recorded) markDone(r.today_record);
+}
+
+function markDone(rec){
+  recorded = true;
+  var btn = $('b-clk');
+  if(btn){ btn.disabled=true; btn.textContent='오늘 퇴근 기록 완료'; btn.className='w-full py-5 bg-gray-200 text-gray-500 text-xl font-extrabold rounded-2xl cursor-default'; }
+  $('done-box').classList.remove('hidden');
+  if(rec){
+    var ct = typeof rec.clock_out_time === 'string' ? rec.clock_out_time : '';
+    $('done-info').innerHTML = '<p>퇴근 시간: <strong>'+ct+'</strong></p><p>시간외근무: <strong>'+U.ot(rec.overtime_minutes)+'</strong></p>';
+    var oe = $('v-ot'); if(oe) oe.textContent = U.ot(rec.overtime_minutes);
+  }
+}
+
+/* ================================================
+   퇴근 확정
+   ================================================ */
+async function doClockOut(){
+  if(recorded) return;
+  var ok = await U.confirm('퇴근을 확정하시겠습니까?\n확정 후 수정이 불가합니다.');
+  if(!ok) return;
+
+  U.loading('기록 중...');
+
+  /* GPS */
+  var lat=null, lng=null;
+  try {
+    var pos = await new Promise(function(res,rej){
+      navigator.geolocation.getCurrentPosition(res, rej, {enableHighAccuracy:true, timeout:10000, maximumAge:0});
+    });
+    lat = pos.coords.latitude;
+    lng = pos.coords.longitude;
+    var gm = $('gps-msg');
+    if(gm) gm.innerHTML = '<span class="text-emerald-500 font-medium">&#x1F4CD; 위치 확인됨</span>';
+  } catch(e){
+    var gm2 = $('gps-msg');
+    if(gm2) gm2.innerHTML = '<span class="text-gray-400">위치 정보 없음</span>';
+  }
+
+  var r = await API.clockOut(lat, lng);
+  U.loaded();
+
+  if(r.success){
+    U.toast('퇴근이 기록되었습니다!', true);
+    markDone(r.record);
+  } else {
+    U.toast(r.error);
+  }
+}
+
+/* ================================================
+   기록 조회
+   ================================================ */
+async function loadRecords(year){
+  year = year || new Date().getFullYear();
+  U.loading('기록 조회 중...');
+  var r = await API.records(year);
+  U.loaded();
+
+  var box = $('rec-list');
+  if(!box) return;
+
+  if(!r.success || !r.records || r.records.length===0){
+    box.innerHTML = '<div class="text-center py-16 text-gray-400 text-sm">기록이 없습니다.</div>';
+    return;
+  }
+
+  /* 월별 그룹핑 */
+  var g = {};
+  r.records.forEach(function(rec){
+    var m = rec.record_date.substring(0,7);
+    if(!g[m]) g[m] = {recs:[], min:0};
+    g[m].recs.push(rec);
+    g[m].min += (rec.overtime_minutes||0);
+  });
+
+  var months = Object.keys(g).sort().reverse();
+  var html = '';
+
+  months.forEach(function(m){
+    var info = g[m];
+    var label = m.replace('-','년 ') + '월';
+    var hrs = Math.round(info.min / 60 * 10) / 10;
+
+    html += '<div class="mb-6">';
+    html += '<div class="flex justify-between items-center pb-2 mb-2 border-b-2 border-gray-200">';
+    html += '<span class="text-sm font-extrabold text-gray-800">' + label + '</span>';
+    html += '<span class="text-xs font-bold text-blue-600">합계 ' + hrs + '시간</span>';
+    html += '</div>';
+
+    info.recs.forEach(function(rec){
+      var ds = rec.record_date.substring(5);
+      html += '<div class="flex items-center bg-white rounded-xl px-4 py-3 mb-1.5 shadow-sm">';
+      html += '<div class="w-[76px]"><span class="text-sm font-bold text-gray-800">' + ds + '</span> <span class="text-[11px] text-gray-400">(' + (rec.day_of_week||'') + ')</span></div>';
+      html += '<div class="flex-1 text-center text-sm font-semibold text-gray-700">' + rec.clock_out_time + '</div>';
+      html += '<div class="w-[88px] text-right text-xs font-bold text-blue-600">' + U.ot(rec.overtime_minutes) + '</div>';
+      html += '</div>';
+    });
+
+    html += '</div>';
+  });
+
+  box.innerHTML = html;
+}

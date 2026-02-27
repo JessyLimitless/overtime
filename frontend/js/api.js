@@ -1,55 +1,57 @@
 /**
- * api.js - Google Apps Script Web App API 통신 모듈
+ * api.js - Apps Script Web App 통신 모듈
+ * 모든 API 호출을 POST + JSON body (Content-Type: text/plain) 로 수행
  */
+var API_BASE = 'https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec';
 
-const API_BASE = 'https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec';
-
-const API = {
-  async request(action, params) {
-    params = params || {};
-    const sessionToken = localStorage.getItem('session_token');
-    const body = Object.assign({ action: action, session_token: sessionToken }, params);
-
-    try {
-      const res = await fetch(API_BASE, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify(body)
-      });
-      const data = await res.json();
-
-      if (!data.success && data.error && data.error.indexOf('세션') !== -1) {
-        localStorage.removeItem('session_token');
-        localStorage.removeItem('employee');
+var API = {
+  /** 공통 요청 */
+  call: function(action, extra) {
+    var body = Object.assign(
+      { action: action, session_token: localStorage.getItem('st') || '' },
+      extra || {}
+    );
+    return fetch(API_BASE, {
+      method: 'POST',
+      redirect: 'follow',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(body)
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (!d.success && d.error && d.error.indexOf('세션') > -1) {
+        localStorage.removeItem('st');
+        localStorage.removeItem('emp');
         location.reload();
-        return data;
       }
-      return data;
-    } catch (e) {
-      console.error('API Error:', e);
-      return { success: false, error: '서버 통신 오류가 발생했습니다.' };
-    }
+      return d;
+    })
+    .catch(function(e){
+      console.error('API', e);
+      return { success:false, error:'서버 통신 오류가 발생했습니다.' };
+    });
   },
 
-  /* 인증 */
-  login(id, pw)        { return this.request('login', { employee_id: id, password: pw }); },
-  loginToken(token)    { return this.request('login', { unique_token: token }); },
-  verifySession()      { return this.request('verify_session'); },
+  /* ── 인증 ── */
+  login:       function(id,pw)  { return this.call('login', {employee_id:id, password:pw}); },
+  loginToken:  function(t)      { return this.call('login', {unique_token:t}); },
+  verify:      function()       { return this.call('verify_session'); },
 
-  /* 퇴근 */
-  getStatus()          { return this.request('get_current_status'); },
-  clockOut(lat, lng)   { return this.request('clock_out', { latitude: lat, longitude: lng }); },
+  /* ── 퇴근 ── */
+  status:      function()       { return this.call('get_current_status'); },
+  clockOut:    function(lat,lng) { return this.call('clock_out', {latitude:lat, longitude:lng}); },
 
-  /* 기록 */
-  getRecords(year)     { return this.request('get_records', { year: year }); },
-  getMonthlySummary(y) { return this.request('get_monthly_summary', { year: y }); },
+  /* ── 기록 ── */
+  records:     function(y)      { return this.call('get_records',  {year:y}); },
+  monthly:     function(y)      { return this.call('get_monthly_summary', {year:y}); },
 
-  /* 관리자 */
-  adminLogin(pw)       { return this.request('admin_login', { password: pw }); },
-  getDashboard(ym)     { return this.request('get_dashboard_data', { year_month: ym }); },
-  getAllStats(ym)       { return this.request('get_all_stats', { year_month: ym }); },
-  genAllQR(base)       { return this.request('generate_all_qr', { base_url: base }); },
-  addEmployee(d)       { return this.request('add_employee', d); },
-  getEmployees()       { return this.request('get_employees'); },
-  updateSettings(s)    { return this.request('update_settings', { settings: s }); }
+  /* ── 관리자 ── */
+  adminLogin:  function(pw)     { return this.call('admin_login', {password:pw}); },
+  dashboard:   function(ym)     { return this.call('get_dashboard_data', {year_month:ym}); },
+  allStats:    function(ym)     { return this.call('get_all_stats', {year_month:ym}); },
+  genAllQR:    function(base)   { return this.call('generate_all_qr', {base_url:base}); },
+  addEmp:      function(d)      { return this.call('add_employee', d); },
+  employees:   function()       { return this.call('get_employees'); },
+  saveSettings:function(arr)    { return this.call('update_settings', {settings:arr}); },
+  getSettings: function()       { return this.call('get_settings'); }
 };
